@@ -1,0 +1,126 @@
+---
+title: "Exploratory Analysis of LA City Employee Payroll"
+author: "Andrew Winter"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+I am looking at [open data](https://data.lacity.org/) from the city of Los Angeles. [This data set](https://controllerdata.lacity.org/Payroll/City-Employee-Payroll/pazn-qyym) hasn't been updated since June 2019, but it's sufficient for EDA sample code. I used their Socrata API to access the data.
+
+
+```{r packages, message=FALSE}
+# Load required packages
+library(tidyverse)
+library(httr)
+library(scales)
+```
+
+
+```{r basic procedure, message=FALSE}
+payroll_base <- "https://controllerdata.lacity.org/resource/pazn-qyym.csv"
+payroll_base_response <- httr::GET(
+                           payroll_base,
+                           add_headers("X-App-Token" =
+                             Sys.getenv("SOCRATA_APP_TOKEN")))
+content(payroll_base_response, as = "parsed")
+```
+
+
+By default, only 1,000 rows are returned. I can take the API endpoint and add limit, offset, and order parameters.
+
+
+```{r parameters example}
+# For example, three rows only
+payroll_base %>%
+  paste0("?$limit=3&$offset=0&$order=row_id") %>%
+  GET(add_headers("X-App-Token" = Sys.getenv("SOCRATA_APP_TOKEN")))
+```
+
+
+```{r functions list and df, warning=FALSE, message=FALSE}
+# Functions to reduce copy and paste code
+limit_path <- function(lim = 50, off = 0) {
+  paste0(payroll_base, "?$limit=", lim, "&$offset=", off, "&$order=row_id")
+}
+get_parse <- function(url) {
+  GET(url, add_headers("X-App-Token" = Sys.getenv("SOCRATA_APP_TOKEN"))) %>%
+    content(as = "parsed")
+}
+
+# Believe I can only get 50,000 rows at a time
+# First batch is 0-49,999
+# Iterate through batches of 50,000 up to approximately 371,000 records
+page_df <- tibble(a = 50000,
+       b = seq(0, 349993, by = 49999)) 
+
+payroll_list <- map2(page_df$a, page_df$b, ~ limit_path(.x, .y)) %>%
+    map(get_parse)
+
+# Drop rows for redundancy and in order to combine data frames
+payroll_df <- payroll_list %>%
+  map(~ select(., -mou, -payroll_department, - fms_department, -job_class)) %>%
+  bind_rows() %>%
+  distinct()
+
+payroll_df
+
+# Where is there missing data?
+payroll_df %>%
+  map_df(~ sum(is.na(.))) %>%
+  select(where(~ . != 0)) %>%
+  as.list()
+```
+
+
+I'll just drop the two with the most missing data, for now.
+
+
+```{r drop NAs visualize}
+payroll_df <- payroll_df %>%
+  select(-ends_with("over_base_pay"))
+
+# Basic histogram of total pay
+ggplot(payroll_df) +
+  geom_histogram(aes(x = total_payments, fill = benefits_plan),
+                 bins = 40, alpha = 0.7, color = "black") +
+  scale_x_continuous(labels = comma)
+```
+
+
+## Payments and benefits at the highest and lowest levels
+I am curious about the total pay at the highest incomes and the lowest incomes. What benefits plan are they on? What does the shape of the distribution look like? I'll look at high earners first.
+
+
+```{r 150000 histogram}
+# Remove black outlines for visibility
+payroll_df %>%
+  filter(total_payments > 150000) %>%
+  ggplot() +
+  geom_histogram(aes(x = total_payments, fill = benefits_plan),
+                 bins = 30, alpha = 0.7) +
+  scale_x_continuous(labels = comma)
+```
+
+
+Compared to all employees, the high earners (150,000+) appear to have fewer folks on the city or the police benefits plans. But on the rightmost side of the distribution (300,000+), I see tiny slivers of blue and red.
+
+
+```{r 300000 histogram}
+payroll_df %>%
+  filter(total_payments > 300000) %>%
+  ggplot() +
+  geom_histogram(aes(x = total_payments, fill = benefits_plan),
+                 bins = 10, alpha = 0.7) +
+  scale_x_continuous(labels = comma)
+```
+
+
+Most of the *very* high earners appear to be LAFD or DWP employees. But the *highest* earners look like they're all city employees. 
+
+
+To be continued...
