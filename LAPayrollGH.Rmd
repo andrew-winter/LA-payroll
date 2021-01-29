@@ -42,7 +42,7 @@ payroll_base %>%
 ```
 
 
-```{r functions list and df, warning=FALSE, message=FALSE}
+```{r set of functions 1}
 # Functions to reduce copy and paste code
 limit_path <- function(lim = 50, off = 0) {
   paste0(payroll_base, "?$limit=", lim, "&$offset=", off, "&$order=row_id")
@@ -51,7 +51,9 @@ get_parse <- function(url) {
   GET(url, add_headers("X-App-Token" = Sys.getenv("SOCRATA_APP_TOKEN"))) %>%
     content(as = "parsed")
 }
+```
 
+```{r list and df, warning=FALSE, message=FALSE}
 # Believe I can only get 50,000 rows at a time
 # First batch is 0-49,999
 # Iterate through batches of 50,000 up to approximately 371,000 records
@@ -66,23 +68,74 @@ payroll_df <- payroll_list %>%
   map(~ select(., -mou, -payroll_department, - fms_department, -job_class)) %>%
   bind_rows() %>%
   distinct()
+```
 
-payroll_df
+```{r data cleaning}
+glimpse(payroll_df)
 
 # Where is there missing data?
 payroll_df %>%
   map_df(~ sum(is.na(.))) %>%
   select(where(~ . != 0)) %>%
   as.list()
+
+payroll_df <- payroll_df %>%
+  select(-ends_with("over_base_pay"))
+
+payroll_df %>%
+  count(mou_title, sort = TRUE) %>%
+  print(n = 187)
+
 ```
 
 
-I'll just drop the two with the most missing data, for now.
+```{r tests}
+payroll_df %>%
+  select(mou_title) %>%
+  mutate(mou_category = case_when(
+    grepl('police', mou_title, ignore.case = TRUE) ~ 'Police',
+    grepl('clerical', mou_title, ignore.case = TRUE) ~ 'Clerical',
+    grepl('oper', mou_title, ignore.case = TRUE) ~ 'Operations',
+    TRUE ~ as.character(mou_title)
+    )
+  )
+
+
+payroll_df %>%
+  select(mou_title) %>%
+  mutate(mou_category = case_when(
+    grepl('police', mou_title, ignore.case = TRUE) ~ 'Police',
+    grepl('clerical', mou_title, ignore.case = TRUE) ~ 'Clerical',
+    grepl('oper', mou_title, ignore.case = TRUE) ~ 'Operations',
+    grepl('fire', mou_title, ignore.case = TRUE) ~ 'Fire',
+    grepl('non-rep', mou_title, ignore.case = TRUE) ~ 'Non-Represented',
+    grepl('admin', mou_title, ignore.case = TRUE) ~ 'Admin',
+    grepl('safe', mou_title, ignore.case = TRUE) ~ 'Safety',
+    grepl('rec', mou_title, ignore.case = TRUE) ~ 'Recreation',
+    TRUE ~ as.character(mou_title)
+    )
+  ) %>%
+  count(mou_category, sort = TRUE)
+# I should really check all of these for matches that are inaccurate
+
+
+# checking if this tidyverse version works
+# this version does not
+payroll_df %>%
+  select(mou_title) %>%
+  mutate(mou_category = case_when(
+    str_detect('police', mou_title) ~ 'Police',
+    str_detect('clerical', mou_title) ~ 'Clerical',
+    TRUE ~ is.character(mou_title)))
+
+```
+
+
+
 
 
 ```{r drop NAs visualize}
-payroll_df <- payroll_df %>%
-  select(-ends_with("over_base_pay"))
+
 
 # Basic histogram of total pay
 ggplot(payroll_df) +
