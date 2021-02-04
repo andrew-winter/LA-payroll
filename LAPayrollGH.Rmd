@@ -60,7 +60,9 @@ get_parse <- function(url) {
 page_df <- tibble(a = 50000,
        b = seq(0, 349993, by = 49999)) 
 
-payroll_list <- map2(page_df$a, page_df$b, ~ limit_path(.x, .y)) %>%
+payroll_list <- map2(
+  page_df$a, page_df$b,
+  ~ limit_path(.x, .y)) %>%
     map(get_parse)
 
 # Drop rows for redundancy and in order to combine data frames
@@ -89,6 +91,7 @@ payroll_df %>%
 ```
 
 
+## Testing to see how to narrow down categories
 ```{r tests}
 payroll_df %>%
   select(mou_title) %>%
@@ -131,18 +134,57 @@ payroll_df %>%
 ```
 
 
+## Palette tests
+```{r palette tests}
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+benes_palette_alt <- setNames(c(c25[1:4], c25[13]),
+                              nm = c("Police", "Fire", "City", "DWP", "NA"))
+```
 
 
+## Visualize
+```{r visualize}
+benes_palette <- setNames(hue_pal()(4),
+                          nm = c("Fire", "City", "Police", "DWP"))
 
-```{r drop NAs visualize}
-
+show_col(hue_pal()(4))
 
 # Basic histogram of total pay
 ggplot(payroll_df) +
   geom_histogram(aes(x = total_payments, fill = benefits_plan),
-                 bins = 40, alpha = 0.7, color = "black") +
-  scale_x_continuous(labels = comma)
+                 bins = 20, alpha = 0.6) +
+  scale_x_continuous(limits = c(0, 400000), labels = comma) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_manual(values = benes_palette_alt) +
+  labs(title = "Total Payments of LA City Employees, 2013-2018") +
+  theme_gray()
 ```
+
+
+For reference, looks like I'm cutting out these individuals
+```{r removed values}
+payroll_df %>%
+  filter(total_payments <= 0 | total_payments >= 400000)
+
+# 108 here, but only 86 or 96 for removed values
+```
+May want to filter this so that more of the x axis is used.
+20 bins or so is a good size, not a mess of bins, but really need 15+ to see the details. Black outline is good but not used in this case for visibility, skew to the right
 
 
 ## Payments and benefits at the highest and lowest levels
