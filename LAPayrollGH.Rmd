@@ -15,7 +15,10 @@ I am looking at [open data](https://data.lacity.org/) from the city of Los Angel
 
 ```{r packages, message=FALSE}
 # Load required packages
-library(tidyverse)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(ggplot2)
 library(httr)
 library(scales)
 ```
@@ -26,7 +29,8 @@ payroll_base <- "https://controllerdata.lacity.org/resource/pazn-qyym.csv"
 payroll_base_response <- httr::GET(
                            payroll_base,
                            add_headers("X-App-Token" =
-                             Sys.getenv("SOCRATA_APP_TOKEN")))
+                             Sys.getenv("SOCRATA_APP_TOKEN"))
+                           )
 content(payroll_base_response, as = "parsed")
 ```
 
@@ -56,9 +60,9 @@ get_parse <- function(url) {
 ```{r list and df, warning=FALSE, message=FALSE}
 # Believe I can only get 50,000 rows at a time
 # First batch is 0-49,999
-# Iterate through batches of 50,000 up to approximately 371,000 records
+# if it's greater than 371,000 seems data was updated
 page_df <- tibble(a = 50000,
-       b = seq(0, 349993, by = 49999)) 
+       b = seq(0, 400000, by = 49999)) 
 
 payroll_list <- map2(
   page_df$a, page_df$b,
@@ -71,6 +75,23 @@ payroll_df <- payroll_list %>%
   bind_rows() %>%
   distinct()
 ```
+
+```{r}
+foo <- payroll_list %>%
+  map(~ select(., -mou, -payroll_department, - fms_department, -job_class))
+
+# How do I write something like this
+foo[map(foo, nrow) > 0] %>%
+  bind_rows()
+
+nrow(foo[[1]]) > 0
+
+a <- foo[[1]]
+a[nrow(a) > 0]
+
+```
+
+
 
 ```{r data cleaning}
 glimpse(payroll_df)
@@ -115,8 +136,7 @@ payroll_df %>%
     grepl('admin', mou_title, ignore.case = TRUE) ~ 'Admin',
     grepl('safe', mou_title, ignore.case = TRUE) ~ 'Safety',
     grepl('rec', mou_title, ignore.case = TRUE) ~ 'Recreation',
-    TRUE ~ as.character(mou_title)
-    )
+    TRUE ~ as.character(mou_title))
   ) %>%
   count(mou_category, sort = TRUE)
 # I should really check all of these for matches that are inaccurate
